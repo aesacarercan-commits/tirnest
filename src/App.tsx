@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { LayoutGrid, Scale, Ruler, TrendingUp } from 'lucide-react';
+import { LayoutGrid, Scale, Ruler, TrendingUp, Download } from 'lucide-react';
 import { Header } from './components/Header';
 import { TruckVisual } from './components/TruckVisual';
 import { PalletList } from './components/PalletList';
@@ -9,6 +9,7 @@ import { supabase, getSessionId } from './lib/supabase';
 import { PalletDef, TirResult, PALETTE_COLORS } from './types';
 import { nestOneTir, computeUtil } from './utils/nesting';
 import { calculateWeightDistribution } from './utils/weights';
+import { exportToPDF } from './components/PDFExport';
 
 function Card({ children, className = '' }: { children: React.ReactNode; className?: string }) {
   return (
@@ -317,6 +318,17 @@ export default function App() {
                     );
                   })}
                 </div>
+              )}
+
+              {/* PDF Export Button */}
+              {tirs.length > 0 && (
+                <button
+                  onClick={() => exportToPDF({ tirs, pallets, config })}
+                  className="w-full mb-3 px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-semibold flex items-center justify-center gap-2 transition-colors shadow-sm"
+                >
+                  <Download size={16} />
+                  PDF İndir ({tirs.length} Tır)
+                </button>
               )}
 
               {/* Canvas */}
