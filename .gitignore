@@ -5,44 +5,89 @@ node_modules/
 # Build outputs
 dist/
 build/
-*.js.map
-*.tsbuildinfo
-
-# Environment variables
-.env
-.env.local
-*.env.*
+target/
 
 # Logs
 *.log
 
-# Coverage reports
-coverage/
-htmlcov/
-*.coverage
+# Environment variables
+.env
+.env.local
+.env.*
 
-# IDE specific
+# IDE files
 .vscode/
 .idea/
 *.swp
 *.swo
+*.tmp
 
-# OS specific
-.DS_Store
-Thumbs.db
-
-# Python cache (if any Python files exist in project)
+# Python
 __pycache__/
 *.pyc
 *.pyo
 *.pyd
+.Python
+env/
+venv/
+.venv/
+pip-log.txt
+pip-delete-this-directory.txt
+.tox/
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+*.log
+.git/modules/
+.DS_Store
+Thumbs.db
 
-# Temporary files
-*.tmp
-*.temp
+# Compiled and binary files
+*.o
+*.obj
+*.exe
+*.dll
+*.so
+*.a
+*.out
+*.class
 
-# Package manager caches
-.npm/
-.yarn/
-.pnpm-store/
+# Compression
+*.zip
+*.gz
+*.tar
+*.tgz
+*.bz2
+*.xz
+*.7z
+*.rar
+*.zst
+*.lz4
+*.lzh
+*.cab
+*.arj
+*.rpm
+*.deb
+*.Z
+*.lz
+*.lzo
+*.tar.gz
+*.tar.bz2
+*.tar.xz
+*.tar.zst
+
+# Testing
+.coverage*
+htmlcov/
+.pytest_cache/
+.mypy_cache/
+
+# Gradle
+.gradle/
+
+# Coverage
+coverage/
 ```

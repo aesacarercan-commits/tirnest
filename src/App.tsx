@@ -11,6 +11,12 @@ import { nestOneTir, computeUtil } from './utils/nesting';
 import { calculateWeightDistribution } from './utils/weights';
 import { exportToPDF } from './components/PDFExport';
 
+interface ToastMessage {
+  id: string;
+  type: 'success' | 'error' | 'info';
+  message: string;
+}
+
 function Card({ children, className = '' }: { children: React.ReactNode; className?: string }) {
   return (
     <div className={`bg-white border border-stone-200 rounded-xl p-4 shadow-sm ${className}`}>
@@ -139,12 +145,18 @@ export default function App() {
     setPallets((prev) => prev.filter((p) => p.id !== id));
     try {
       if (supabase) {
-        await supabase.from('pallet_definitions').delete().eq('id', id).eq('session_id', sessionId);
+        const { error } = await supabase.from('pallet_definitions').delete().eq('id', id).eq('session_id', sessionId);
+        if (error) throw error;
+        showToast('success', 'Palet silindi.');
       }
     } catch (err) {
       console.error('Failed to delete pallet:', err);
+      showToast('error', 'Palet silinirken bir hata oluştu.');
+      // Geri alma: silinen paleti geri ekle
+      const deleted = pallets.find(p => p.id === id);
+      if (deleted) setPallets(prev => [...prev, deleted]);
     }
-  }, [sessionId]);
+  }, [sessionId, showToast, pallets]);
 
   const handleAdd = useCallback(async (def: Omit<PalletDef, 'id' | 'sort_order'>) => {
     const id = 'p_' + Date.now().toString(36);
@@ -153,12 +165,17 @@ export default function App() {
     setPallets((prev) => [...prev, newPallet]);
     try {
       if (supabase) {
-        await supabase.from('pallet_definitions').insert({ ...newPallet, session_id: sessionId });
+        const { error } = await supabase.from('pallet_definitions').insert({ ...newPallet, session_id: sessionId });
+        if (error) throw error;
+        showToast('success', 'Palet eklendi.');
       }
     } catch (err) {
       console.error('Failed to add pallet:', err);
+      showToast('error', 'Palet eklenirken bir hata oluştu.');
+      // Geri alma: eklenen paleti kaldır
+      setPallets(prev => prev.filter(p => p.id !== id));
     }
-  }, [pallets.length, sessionId]);
+  }, [pallets.length, sessionId, showToast]);
 
   function cfgSet(key: keyof Config, val: number) {
     setConfig((c) => ({ ...c, [key]: val }));
@@ -203,6 +220,23 @@ export default function App() {
   return (
     <div className="min-h-screen bg-stone-100">
       <Header />
+      
+      {/* Toast Notifications */}
+      <div className="fixed top-4 right-4 z-50 flex flex-col gap-2">
+        {toasts.map(toast => (
+          <div
+            key={toast.id}
+            className={`px-4 py-3 rounded-lg shadow-lg text-sm font-medium animate-slide-in max-w-xs ${
+              toast.type === 'success' ? 'bg-emerald-500 text-white' :
+              toast.type === 'error' ? 'bg-red-500 text-white' :
+              'bg-blue-500 text-white'
+            }`}
+          >
+            {toast.message}
+          </div>
+        ))}
+      </div>
+      
       <div className="p-3.5 max-w-[1400px] mx-auto">
         <div className="flex gap-3.5 flex-wrap">
 
