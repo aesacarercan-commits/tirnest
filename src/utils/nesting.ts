@@ -8,10 +8,12 @@ export function nestOneTir(
   gap: number
 ): { placed: PlacedPallet[]; remaining: PalletDef[] } {
   const placed: PlacedPallet[] = [];
-  const remaining: PalletDef[] = [];
-  const usedSlots = new Array(pallets.length).fill(false);
+  
+  // Her palet tanımının kaç adet kullanıldığını takip et
+  const usedCounts = new Array(pallets.length).fill(0);
+  
   let curX = 0;
-
+  
   while (true) {
     if (curX >= tLen) break;
     let bestConfig: {
@@ -22,12 +24,17 @@ export function nestOneTir(
       slotH: number;
       countY: number;
       countX: number;
+      pi: number;
     } | null = null;
     let bestScore = -1;
 
     for (let pi = 0; pi < pallets.length; pi++) {
-      if (usedSlots[pi]) continue;
       const p = pallets[pi];
+      const availableCount = p.count - usedCounts[pi];
+      
+      // Bu paletten kullanılabilir adet yoksa atla
+      if (availableCount <= 0) continue;
+      
       for (let rot = 0; rot < 2; rot++) {
         const pw = rot === 0 ? p.w : p.h;
         const ph = rot === 0 ? p.h : p.w;
@@ -37,40 +44,38 @@ export function nestOneTir(
         if (countY < 1) continue;
         const countX = Math.floor((tLen - curX + gap) / slotW);
         if (countX < 1) continue;
+        
+        // Kullanılabilir adet kadar yerleştirebiliriz
+        const maxPlaceable = Math.min(countY * countX, availableCount);
+        if (maxPlaceable < 1) continue;
+        
         const score = countY * slotH;
         if (score > bestScore) {
           bestScore = score;
-          bestConfig = { p, pw, ph, slotW, slotH, countY, countX };
+          bestConfig = { p, pw, ph, slotW, slotH, countY, countX, pi };
         }
       }
     }
 
     if (!bestConfig) break;
-    const { p, pw, ph, slotW, slotH, countY, countX } = bestConfig;
+    const { p, pw, ph, slotW, slotH, countY, countX, pi } = bestConfig;
     let colsUsed = 0;
 
     outer: for (let ix = 0; ix < countX; ix++) {
       let curY = 0;
       let placedInThisCol = 0;
       for (let iy = 0; iy < countY; iy++) {
-        let found = -1;
-        for (let pi = 0; pi < pallets.length; pi++) {
-          if (usedSlots[pi]) continue;
-          const pp = pallets[pi];
-          if (pp.name === p.name && pp.w === p.w && pp.h === p.h) {
-            found = pi;
-            break;
-          }
-        }
-        if (found === -1) break outer;
-        usedSlots[found] = true;
+        // Kullanılabilir palet var mı kontrol et
+        if (usedCounts[pi] >= p.count) break outer;
+        
+        usedCounts[pi]++;
         placed.push({
-          ...pallets[found],
+          ...p,
           x: curX + ix * slotW,
           y: curY,
           dw: pw,
           dh: ph,
-          color: colorMap[pallets[found].id] || PALETTE_COLORS[0],
+          color: colorMap[p.id] || PALETTE_COLORS[0],
         });
         curY += slotH;
         placedInThisCol++;
@@ -82,8 +87,13 @@ export function nestOneTir(
     curX += colsUsed * slotW;
   }
 
+  // Kalan paletleri hesapla
+  const remaining: PalletDef[] = [];
   for (let pi = 0; pi < pallets.length; pi++) {
-    if (!usedSlots[pi]) remaining.push(pallets[pi]);
+    const remainingCount = pallets[pi].count - usedCounts[pi];
+    if (remainingCount > 0) {
+      remaining.push({ ...pallets[pi], count: remainingCount });
+    }
   }
 
   return { placed, remaining };
