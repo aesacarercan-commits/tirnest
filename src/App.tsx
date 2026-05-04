@@ -60,6 +60,7 @@ export default function App() {
   const [activeTir, setActiveTir] = useState(0);
   const [config, setConfig] = useState<Config>(DEFAULT_CONFIG);
   const [loading, setLoading] = useState(true);
+  const [manualOverrides, setManualOverrides] = useState<Record<number, Record<number, { x: number; y: number }>>>({});
 
   const sessionId = getSessionId();
 
@@ -190,7 +191,39 @@ export default function App() {
 
     setTirs(results);
     setActiveTir(0);
+    setManualOverrides({}); // Manuel değişiklikleri sıfırla
   }
+
+  const handlePalletMove = useCallback((tirIndex: number, palletIndex: number, newX: number, newY: number) => {
+    setTirs((prevTirs) => {
+      const newTirs = [...prevTirs];
+      const tir = newTirs[tirIndex];
+      if (!tir) return prevTirs;
+
+      const newPlaced = [...tir.placed];
+      const pallet = newPlaced[palletIndex];
+      if (!pallet) return prevTirs;
+
+      // Yeni pozisyonu ayarla
+      newPlaced[palletIndex] = { ...pallet, x: newX, y: newY };
+      newTirs[tirIndex] = { ...tir, placed: newPlaced };
+
+      // Ağırlık dağılımını yeniden hesapla
+      const newWeightDist = calculateWeightDistribution(newPlaced, config.tLen, config.kingpinDist, config.axleDist);
+      newTirs[tirIndex] = { ...tir, placed: newPlaced, weightDist: newWeightDist };
+
+      return newTirs;
+    });
+
+    // Manuel değişikliği kaydet
+    setManualOverrides((prev) => ({
+      ...prev,
+      [tirIndex]: {
+        ...prev[tirIndex],
+        [palletIndex]: { x: newX, y: newY },
+      },
+    }));
+  }, [config.tLen, config.kingpinDist, config.axleDist]);
 
   const totalPallets = pallets.reduce((s, p) => s + (p.count || 0), 0);
   const totalPlaced = tirs.reduce((s, t) => s + t.placed.length, 0);
@@ -327,6 +360,7 @@ export default function App() {
                   tirTotal={tirs.length}
                   tLen={config.tLen}
                   tWid={config.tWid}
+                  onPalletMove={handlePalletMove}
                 />
               ) : (
                 <div className="h-40 flex flex-col items-center justify-center gap-3 bg-stone-50 rounded-xl border-2 border-dashed border-stone-200">
