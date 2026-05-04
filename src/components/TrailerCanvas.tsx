@@ -1,5 +1,5 @@
-import { useEffect, useRef } from 'react';
-import { TirResult } from '../types';
+import { useEffect, useRef, useState, useCallback } from 'react';
+import { TirResult, PlacedPallet } from '../types';
 
 interface Props {
   tir: TirResult;
@@ -7,11 +7,104 @@ interface Props {
   tirTotal: number;
   tLen: number;
   tWid: number;
+  onPalletMove?: (tirIndex: number, palletIndex: number, newX: number, newY: number) => void;
 }
 
-export function TrailerCanvas({ tir, tirIndex, tirTotal, tLen, tWid }: Props) {
+export function TrailerCanvas({ tir, tirIndex, tirTotal, tLen, tWid, onPalletMove }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const wrapRef = useRef<HTMLDivElement>(null);
+  const [dragging, setDragging] = useState<{
+    palletIndex: number;
+    startX: number;
+    startY: number;
+    origX: number;
+    origY: number;
+  } | null>(null);
+  const [hoveredPallet, setHoveredPallet] = useState<number | null>(null);
+
+  const getScale = useCallback(() => {
+    const wrap = wrapRef.current;
+    const canvas = canvasRef.current;
+    if (!wrap || !canvas) return 1;
+    const maxW = wrap.clientWidth - 2;
+    return Math.min(maxW / tLen, 220 / tWid, 0.8);
+  }, [tLen, tWid]);
+
+  const findPalletAtPoint = useCallback((clientX: number, clientY: number): number | null => {
+    const canvas = canvasRef.current;
+    if (!canvas) return null;
+    const rect = canvas.getBoundingClientRect();
+    const x = clientX - rect.left;
+    const y = clientY - rect.top;
+    const scale = getScale();
+
+    for (let i = tir.placed.length - 1; i >= 0; i--) {
+      const p = tir.placed[i];
+      const px = Math.round(p.x * scale) + 1;
+      const py = Math.round(p.y * scale) + 1;
+      const pw = Math.round(p.dw * scale) - 1;
+      const ph = Math.round(p.dh * scale) - 1;
+      if (x >= px && x <= px + pw && y >= py && y <= py + ph) {
+        return i;
+      }
+    }
+    return null;
+  }, [tir.placed, getScale]);
+
+  const handleMouseDown = useCallback((e: React.MouseEvent<HTMLCanvasElement>) => {
+    const palletIndex = findPalletAtPoint(e.clientX, e.clientY);
+    if (palletIndex !== null) {
+      const p = tir.placed[palletIndex];
+      setDragging({
+        palletIndex,
+        startX: e.clientX,
+        startY: e.clientY,
+        origX: p.x,
+        origY: p.y,
+      });
+    }
+  }, [findPalletAtPoint, tir.placed]);
+
+  const handleMouseMove = useCallback((e: React.MouseEvent<HTMLCanvasElement>) => {
+    const palletIndex = findPalletAtPoint(e.clientX, e.clientY);
+    setHoveredPallet(palletIndex);
+
+    if (dragging) {
+      const scale = getScale();
+      const dx = (e.clientX - dragging.startX) / scale;
+      const dy = (e.clientY - dragging.startY) / scale;
+      
+      const newX = Math.max(0, Math.min(dragging.origX + dx, tLen - tir.placed[dragging.palletIndex].dw));
+      const newY = Math.max(0, Math.min(dragging.origY + dy, tWid - tir.placed[dragging.palletIndex].dh));
+      
+      // Geçici olarak paleti yeni konumda göstermek için state güncellemesi yapılabilir
+      // Ancak şu an sadece görsel geri bildirim veriyoruz
+    }
+  }, [dragging, findPalletAtPoint, getScale, tLen, tWid, tir.placed]);
+
+  const handleMouseUp = useCallback((e: React.MouseEvent<HTMLCanvasElement>) => {
+    if (dragging && onPalletMove) {
+      const scale = getScale();
+      const dx = (e.clientX - dragging.startX) / scale;
+      const dy = (e.clientY - dragging.startY) / scale;
+      
+      let newX = Math.round(dragging.origX + dx);
+      let newY = Math.round(dragging.origY + dy);
+      
+      // Sınır kontrolü
+      const p = tir.placed[dragging.palletIndex];
+      newX = Math.max(0, Math.min(newX, tLen - p.dw));
+      newY = Math.max(0, Math.min(newY, tWid - p.dh));
+      
+      onPalletMove(tirIndex, dragging.palletIndex, newX, newY);
+    }
+    setDragging(null);
+  }, [dragging, onPalletMove, getScale, tirIndex, tir.placed, tLen, tWid]);
+
+  const handleMouseLeave = useCallback(() => {
+    setDragging(null);
+    setHoveredPallet(null);
+  }, []);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -55,18 +148,38 @@ export function TrailerCanvas({ tir, tirIndex, tirTotal, tLen, tWid }: Props) {
       ctx.beginPath(); ctx.moveTo(sx, 0); ctx.lineTo(sx, canvas.height); ctx.stroke();
     }
 
-    tir.placed.forEach((p) => {
+    tir.placed.forEach((p, idx) => {
       const px = Math.round(p.x * scale) + 1;
       const py = Math.round(p.y * scale) + 1;
       const pw = Math.round(p.dw * scale) - 1;
       const ph = Math.round(p.dh * scale) - 1;
       if (pw < 1 || ph < 1) return;
 
-      ctx.fillStyle = p.color + 'CC';
+      // Hover efekti
+      const isHovered = hoveredPallet === idx;
+      const isDragged = dragging?.palletIndex === idx;
+      
+      ctx.fillStyle = isDragged 
+        ? p.color + 'FF' 
+        : (isHovered ? p.color + 'EE' : p.color + 'CC');
       ctx.fillRect(px, py, pw, ph);
-      ctx.strokeStyle = p.color;
-      ctx.lineWidth = 1;
+      
+      // Border ve shadow efekti
+      ctx.strokeStyle = isHovered || isDragged ? '#fff' : p.color;
+      ctx.lineWidth = isHovered || isDragged ? 3 : 1;
+      if (isHovered || isDragged) {
+        ctx.shadowColor = 'rgba(0,0,0,0.3)';
+        ctx.shadowBlur = 8;
+        ctx.shadowOffsetX = 2;
+        ctx.shadowOffsetY = 2;
+      } else {
+        ctx.shadowColor = 'transparent';
+        ctx.shadowBlur = 0;
+        ctx.shadowOffsetX = 0;
+        ctx.shadowOffsetY = 0;
+      }
       ctx.strokeRect(px, py, pw, ph);
+      ctx.shadowColor = 'transparent';
 
       if (pw > 18 && ph > 10) {
         ctx.fillStyle = '#fff';
@@ -78,7 +191,7 @@ export function TrailerCanvas({ tir, tirIndex, tirTotal, tLen, tWid }: Props) {
         ctx.fillText(short, px + pw / 2, py + ph / 2);
       }
     });
-  }, [tir, tLen, tWid]);
+  }, [tir, tLen, tWid, hoveredPallet, dragging]);
 
   const seen: Record<string, string> = {};
   tir.placed.forEach((p) => { if (!seen[p.name]) seen[p.name] = p.color; });
@@ -86,10 +199,22 @@ export function TrailerCanvas({ tir, tirIndex, tirTotal, tLen, tWid }: Props) {
   return (
     <div>
       <div className="relative rounded-lg overflow-hidden" ref={wrapRef}>
-        <canvas ref={canvasRef} className="block border border-stone-200 rounded-lg w-full" />
+        <canvas 
+          ref={canvasRef} 
+          className={`block border border-stone-200 rounded-lg w-full ${dragging ? 'cursor-grabbing' : 'cursor-grab'}`}
+          onMouseDown={handleMouseDown}
+          onMouseMove={handleMouseMove}
+          onMouseUp={handleMouseUp}
+          onMouseLeave={handleMouseLeave}
+        />
         <div className="absolute top-2 right-2 bg-white/90 backdrop-blur-sm px-2 py-1 rounded text-[10px] font-semibold text-stone-500 border border-stone-200">
           Dorsé {tirIndex + 1}/{tirTotal} · {tir.placed.length} palet · %{tir.util} doluluk
         </div>
+        {dragging && (
+          <div className="absolute bottom-2 left-1/2 -translate-x-1/2 bg-blue-600 text-white px-3 py-1.5 rounded-md text-xs font-medium shadow-lg">
+            🖱️ Paleti sürükleyin ve bırakın
+          </div>
+        )}
       </div>
       <div className="flex gap-3 flex-wrap mt-2.5 pt-2.5 border-t border-stone-200">
         {Object.entries(seen).map(([name, color]) => (
