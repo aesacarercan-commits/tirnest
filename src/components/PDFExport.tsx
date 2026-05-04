@@ -1,7 +1,3 @@
---- src/components/PDFExport.tsx (原始)
-
-
-+++ src/components/PDFExport.tsx (修改后)
 import jsPDF from 'jspdf';
 import { TirResult, PalletDef } from '../types';
 
