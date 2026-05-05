@@ -1,4 +1,16 @@
-import { PalletDef, PlacedPallet, PALETTE_COLORS } from '../types';
+import { PalletDef, PlacedPallet } from '../types';
+import { PALETTE_COLORS } from '../constants';
+
+export interface NestingConfig {
+  tLen: number;
+  tWid: number;
+  gap: number;
+}
+
+export interface NestResult {
+  placed: PlacedPallet[];
+  remaining: PalletDef[];
+}
 
 export function nestOneTir(
   pallets: PalletDef[],
@@ -6,7 +18,7 @@ export function nestOneTir(
   tLen: number,
   tWid: number,
   gap: number
-): { placed: PlacedPallet[]; remaining: PalletDef[] } {
+): NestResult {
   const placed: PlacedPallet[] = [];
   const remaining: PalletDef[] = [];
   const usedSlots = new Array(pallets.length).fill(false);
