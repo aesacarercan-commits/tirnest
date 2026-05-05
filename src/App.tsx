@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { LayoutGrid, Scale, Ruler, TrendingUp } from 'lucide-react';
 import { Header } from './components/Header';
 import { TruckVisual } from './components/TruckVisual';
@@ -6,9 +6,15 @@ import { PalletList } from './components/PalletList';
 import { TrailerCanvas } from './components/TrailerCanvas';
 import { WeightSection } from './components/WeightSection';
 import { supabase, getSessionId } from './lib/supabase';
-import { PalletDef, TirResult, PALETTE_COLORS } from './types';
+import { usePallets } from './hooks/usePallets';
 import { nestOneTir, computeUtil } from './utils/nesting';
 import { calculateWeightDistribution } from './utils/weights';
+import { DEFAULT_CONFIG, PALETTE_COLORS } from './constants';
+import type { PalletDef, TirResult, PlacedPallet } from './types';
+
+// ============================================================================
+// UI Components
+// ============================================================================
 
 function Card({ children, className = '' }: { children: React.ReactNode; className?: string }) {
   return (
@@ -32,142 +38,64 @@ function CardHeader({ icon, label, iconBg, iconColor }: {
   );
 }
 
-function NumInput({ label, id, value, onChange, step, min, tooltip }: {
-  label: string; id: string; value: number; onChange: (v: number) => void;
-  step?: number; min?: number; tooltip?: string;
-}) {
+interface NumInputProps {
+  label: string;
+  id: string;
+  value: number;
+  onChange: (v: number) => void;
+  step?: number;
+  min?: number;
+  tooltip?: string;
+}
+
+function NumInput({ label, id, value, onChange, step, min, tooltip }: NumInputProps) {
   return (
     <div title={tooltip}>
       <label htmlFor={id} className="text-[11px] font-medium text-stone-500 block mb-1">{label}</label>
-      <input id={id} type="number" value={value} min={min} step={step}
+      <input 
+        id={id} 
+        type="number" 
+        value={value} 
+        min={min} 
+        step={step}
         onChange={(e) => onChange(parseFloat(e.target.value) || 0)}
-        className="w-full px-2.5 py-1.5 border border-stone-200 rounded-md bg-stone-50 text-stone-800 text-xs focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-100 transition-colors" />
+        className="w-full px-2.5 py-1.5 border border-stone-200 rounded-md bg-stone-50 text-stone-800 text-xs focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-100 transition-colors" 
+      />
     </div>
   );
 }
 
-const DEFAULT_CONFIG = {
-  tLen: 1360, tWid: 240, gap: 0,
-  kingpinDist: 120, axleDist: 270,
-  limitFront: 8000, limitTrailer: 24000, limitTotal: 40000,
-};
+// ============================================================================
+// Main App Component
+// ============================================================================
 
 type Config = typeof DEFAULT_CONFIG;
 
 export default function App() {
-  const [pallets, setPallets] = useState<PalletDef[]>([]);
+  const {
+    pallets,
+    loading,
+    handleCountChange,
+    handleWeightChange,
+    handleRemove,
+    handleAdd,
+  } = usePallets();
+
   const [tirs, setTirs] = useState<TirResult[]>([]);
   const [activeTir, setActiveTir] = useState(0);
   const [config, setConfig] = useState<Config>(DEFAULT_CONFIG);
-  const [loading, setLoading] = useState(true);
-  const [manualOverrides, setManualOverrides] = useState<Record<number, Record<number, { x: number; y: number }>>>({});
 
-  const sessionId = getSessionId();
-
-  useEffect(() => {
-    async function loadPallets() {
-      const defaults: PalletDef[] = [
-        { id: 'def1', name: 'Euro 80×120', w: 80, h: 120, weight: 450, count: 24, sort_order: 0 },
-        { id: 'def2', name: 'İndustriyel 100×120', w: 100, h: 120, weight: 800, count: 8, sort_order: 1 },
-        { id: 'def3', name: 'Yarım 60×80', w: 60, h: 80, weight: 250, count: 0, sort_order: 2 },
-      ];
-
-      try {
-        if (!supabase) {
-          setPallets(defaults);
-          setLoading(false);
-          return;
-        }
-
-        const { data, error } = await supabase
-          .from('pallet_definitions')
-          .select('*')
-          .eq('session_id', sessionId)
-          .order('sort_order', { ascending: true });
-
-        if (error) throw error;
-
-        if (data && data.length > 0) {
-          setPallets(data.map((d) => ({
-            id: d.id, name: d.name, w: d.w, h: d.h,
-            weight: d.weight, count: d.count, sort_order: d.sort_order,
-          })));
-        } else {
-          setPallets(defaults);
-          await supabase.from('pallet_definitions').insert(
-            defaults.map((d) => ({ ...d, session_id: sessionId }))
-          );
-        }
-      } catch (err) {
-        console.error('Failed to load pallets:', err);
-        setPallets(defaults);
-      }
-      setLoading(false);
-    }
-    loadPallets();
-  }, [sessionId]);
-
-  const savePallet = useCallback(async (p: PalletDef) => {
-    try {
-      if (supabase) {
-        await supabase.from('pallet_definitions').upsert({ ...p, session_id: sessionId });
-      }
-    } catch (err) {
-      console.error('Failed to save pallet:', err);
-    }
-  }, [sessionId]);
-
-  const handleCountChange = useCallback((id: string, count: number) => {
-    setPallets((prev) => {
-      const next = prev.map((p) => p.id === id ? { ...p, count } : p);
-      const updated = next.find((p) => p.id === id);
-      if (updated) savePallet(updated);
-      return next;
+  // Color map for pallets
+  const colorMap = useMemo(() => {
+    const map: Record<string, string> = {};
+    pallets.forEach((p, i) => { 
+      map[p.id] = PALETTE_COLORS[i % PALETTE_COLORS.length]; 
     });
-  }, [savePallet]);
+    return map;
+  }, [pallets]);
 
-  const handleWeightChange = useCallback((id: string, weight: number) => {
-    setPallets((prev) => {
-      const next = prev.map((p) => p.id === id ? { ...p, weight } : p);
-      const updated = next.find((p) => p.id === id);
-      if (updated) savePallet(updated);
-      return next;
-    });
-  }, [savePallet]);
-
-  const handleRemove = useCallback(async (id: string) => {
-    setPallets((prev) => prev.filter((p) => p.id !== id));
-    try {
-      if (supabase) {
-        await supabase.from('pallet_definitions').delete().eq('id', id).eq('session_id', sessionId);
-      }
-    } catch (err) {
-      console.error('Failed to delete pallet:', err);
-    }
-  }, [sessionId]);
-
-  const handleAdd = useCallback(async (def: Omit<PalletDef, 'id' | 'sort_order'>) => {
-    const id = 'p_' + Date.now().toString(36);
-    const sort_order = pallets.length;
-    const newPallet: PalletDef = { ...def, id, sort_order };
-    setPallets((prev) => [...prev, newPallet]);
-    try {
-      if (supabase) {
-        await supabase.from('pallet_definitions').insert({ ...newPallet, session_id: sessionId });
-      }
-    } catch (err) {
-      console.error('Failed to add pallet:', err);
-    }
-  }, [pallets.length, sessionId]);
-
-  function cfgSet(key: keyof Config, val: number) {
-    setConfig((c) => ({ ...c, [key]: val }));
-  }
-
-  const colorMap: Record<string, string> = {};
-  pallets.forEach((p, i) => { colorMap[p.id] = PALETTE_COLORS[i % PALETTE_COLORS.length]; });
-
-  function runNest() {
+  // Run nesting algorithm
+  const runNest = useCallback(() => {
     const allPallets: PalletDef[] = [];
     pallets.forEach((def) => {
       for (let j = 0; j < (def.count || 0); j++) {
@@ -191,9 +119,9 @@ export default function App() {
 
     setTirs(results);
     setActiveTir(0);
-    setManualOverrides({}); // Manuel değişiklikleri sıfırla
-  }
+  }, [pallets, colorMap, config]);
 
+  // Handle pallet move on canvas
   const handlePalletMove = useCallback((tirIndex: number, palletIndex: number, newX: number, newY: number) => {
     setTirs((prevTirs) => {
       const newTirs = [...prevTirs];
@@ -204,32 +132,27 @@ export default function App() {
       const pallet = newPlaced[palletIndex];
       if (!pallet) return prevTirs;
 
-      // Yeni pozisyonu ayarla
       newPlaced[palletIndex] = { ...pallet, x: newX, y: newY };
-      newTirs[tirIndex] = { ...tir, placed: newPlaced };
-
-      // Ağırlık dağılımını yeniden hesapla
+      
       const newWeightDist = calculateWeightDistribution(newPlaced, config.tLen, config.kingpinDist, config.axleDist);
       newTirs[tirIndex] = { ...tir, placed: newPlaced, weightDist: newWeightDist };
 
       return newTirs;
     });
-
-    // Manuel değişikliği kaydet
-    setManualOverrides((prev) => ({
-      ...prev,
-      [tirIndex]: {
-        ...prev[tirIndex],
-        [palletIndex]: { x: newX, y: newY },
-      },
-    }));
   }, [config.tLen, config.kingpinDist, config.axleDist]);
 
-  const totalPallets = pallets.reduce((s, p) => s + (p.count || 0), 0);
-  const totalPlaced = tirs.reduce((s, t) => s + t.placed.length, 0);
-  const avgUtil = tirs.length ? Math.round(tirs.reduce((s, t) => s + t.util, 0) / tirs.length) : 0;
-  const totalWeight = tirs.reduce((s, t) => s + t.weightDist.totalWeight, 0);
-  const avgWeight = totalPlaced > 0 ? Math.round(totalWeight / totalPlaced) : 0;
+  // Config setter
+  const cfgSet = useCallback((key: keyof Config, val: number) => {
+    setConfig((c) => ({ ...c, [key]: val }));
+  }, []);
+
+  // Statistics
+  const totalPallets = useMemo(() => pallets.reduce((s, p) => s + (p.count || 0), 0), [pallets]);
+  const totalPlaced = useMemo(() => tirs.reduce((s, t) => s + t.placed.length, 0), [tirs]);
+  const avgUtil = useMemo(() => tirs.length ? Math.round(tirs.reduce((s, t) => s + t.util, 0) / tirs.length) : 0, [tirs]);
+  const totalWeight = useMemo(() => tirs.reduce((s, t) => s + t.weightDist.totalWeight, 0), [tirs]);
+  const avgWeight = useMemo(() => totalPlaced > 0 ? Math.round(totalWeight / totalPlaced) : 0, [totalPlaced, totalWeight]);
+  
   const currentTir = tirs[activeTir];
 
   return (
@@ -262,12 +185,22 @@ export default function App() {
             <Card>
               <CardHeader icon={<Scale size={13} />} label="Dingil Ayarları" iconBg="rgba(216,90,48,0.1)" iconColor="#D85A30" />
               <div className="grid grid-cols-2 gap-2 mb-2">
-                <NumInput label="Kingpin (cm)" id="kingpin" value={config.kingpinDist}
-                  onChange={(v) => cfgSet('kingpinDist', v)} step={10}
-                  tooltip="Dorsé önünden kingpin'e mesafe" />
-                <NumInput label="Dingil grubu (cm)" id="axle" value={config.axleDist}
-                  onChange={(v) => cfgSet('axleDist', v)} step={10}
-                  tooltip="Kingpinden dingil grubu merkezine" />
+                <NumInput 
+                  label="Kingpin (cm)" 
+                  id="kingpin" 
+                  value={config.kingpinDist}
+                  onChange={(v) => cfgSet('kingpinDist', v)} 
+                  step={10}
+                  tooltip="Dorsé önünden kingpin'e mesafe" 
+                />
+                <NumInput 
+                  label="Dingil grubu (cm)" 
+                  id="axle" 
+                  value={config.axleDist}
+                  onChange={(v) => cfgSet('axleDist', v)} 
+                  step={10}
+                  tooltip="Kingpinden dingil grubu merkezine" 
+                />
               </div>
               <div className="grid grid-cols-3 gap-2">
                 <NumInput label="Ön dingil (kg)" id="lFront" value={config.limitFront} onChange={(v) => cfgSet('limitFront', v)} step={100} />
@@ -335,9 +268,12 @@ export default function App() {
                     const uc = t.util >= 85 ? '#1D9E75' : t.util >= 50 ? '#BA7517' : '#378ADD';
                     const isActive = i === activeTir;
                     return (
-                      <button key={t.id} onClick={() => setActiveTir(i)}
+                      <button 
+                        key={t.id} 
+                        onClick={() => setActiveTir(i)}
                         className={`px-3 py-1.5 rounded-md text-xs font-semibold border transition-all text-left ${isActive ? 'text-white' : 'bg-stone-50 text-stone-500 border-stone-200 hover:bg-white hover:border-stone-300'}`}
-                        style={isActive ? { background: '#185FA5', borderColor: '#185FA5', boxShadow: '0 2px 8px rgba(24,95,165,0.3)' } : {}}>
+                        style={isActive ? { background: '#185FA5', borderColor: '#185FA5', boxShadow: '0 2px 8px rgba(24,95,165,0.3)' } : {}}
+                      >
                         <div className="flex items-center gap-1.5">
                           <span>Tır {t.id}</span>
                           <span className="opacity-75">%{t.util}</span>
@@ -365,15 +301,12 @@ export default function App() {
                 />
               ) : (
                 <div className="h-40 flex flex-col items-center justify-center gap-3 bg-stone-50 rounded-xl border-2 border-dashed border-stone-200">
-                  <TrendingUp size={28} className="text-stone-300" />
-                  <div className="text-center">
-                    <div className="text-sm font-medium text-stone-400">Paletleri ekleyin ve</div>
-                    <div className="text-xs text-stone-400 mt-0.5">"Yerleştir" butonuna tıklayın</div>
-                  </div>
+                  <TrendingUp size={32} className="text-stone-300" />
+                  <div className="text-sm text-stone-400 font-medium">Yerleştirme yapmak için palet ekleyin ve "Yerleştir" butonuna tıklayın</div>
                 </div>
               )}
 
-              {/* Weight section */}
+              {/* Weight Section */}
               {currentTir && (
                 <WeightSection
                   dist={currentTir.weightDist}
@@ -384,10 +317,8 @@ export default function App() {
               )}
             </Card>
           </div>
-
         </div>
       </div>
     </div>
   );
 }
-

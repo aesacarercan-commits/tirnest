@@ -1,4 +1,11 @@
 import { PlacedPallet, WeightDist } from '../types';
+import { ZONE_LIMITS } from '../constants';
+
+export interface WeightConfig {
+  tLen: number;
+  kingpinDist: number;
+  axleDist: number;
+}
 
 export function calculateWeightDistribution(
   placed: PlacedPallet[],
@@ -8,8 +15,8 @@ export function calculateWeightDistribution(
 ): WeightDist {
   const totalWeight = placed.reduce((s, p) => s + (p.weight || 500), 0);
 
-  const frontLimit = tLen * 0.33;
-  const rearStart = tLen * 0.66;
+  const frontLimit = tLen * ZONE_LIMITS.frontRatio;
+  const rearStart = tLen * ZONE_LIMITS.rearRatio;
 
   let frontW = 0, middleW = 0, rearW = 0;
   let frontCount = 0, middleCount = 0, rearCount = 0;
