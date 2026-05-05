@@ -361,6 +361,7 @@ export default function App() {
                   tLen={config.tLen}
                   tWid={config.tWid}
                   onPalletMove={handlePalletMove}
+                  setTirs={setTirs}
                 />
               ) : (
                 <div className="h-40 flex flex-col items-center justify-center gap-3 bg-stone-50 rounded-xl border-2 border-dashed border-stone-200">

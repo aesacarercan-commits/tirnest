@@ -8,9 +8,10 @@ interface Props {
   tLen: number;
   tWid: number;
   onPalletMove?: (tirIndex: number, palletIndex: number, newX: number, newY: number) => void;
+  setTirs?: React.Dispatch<React.SetStateAction<TirResult[]>>;
 }
 
-export function TrailerCanvas({ tir, tirIndex, tirTotal, tLen, tWid, onPalletMove }: Props) {
+export function TrailerCanvas({ tir, tirIndex, tirTotal, tLen, tWid, onPalletMove, setTirs }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const wrapRef = useRef<HTMLDivElement>(null);
   const [dragging, setDragging] = useState<{
@@ -19,6 +20,7 @@ export function TrailerCanvas({ tir, tirIndex, tirTotal, tLen, tWid, onPalletMov
     startY: number;
     origX: number;
     origY: number;
+    palletName: string;
   } | null>(null);
   const [hoveredPallet, setHoveredPallet] = useState<number | null>(null);
 
@@ -61,6 +63,7 @@ export function TrailerCanvas({ tir, tirIndex, tirTotal, tLen, tWid, onPalletMov
         startY: e.clientY,
         origX: p.x,
         origY: p.y,
+        palletName: p.name,
       });
     }
   }, [findPalletAtPoint, tir.placed]);
@@ -77,10 +80,23 @@ export function TrailerCanvas({ tir, tirIndex, tirTotal, tLen, tWid, onPalletMov
       const newX = Math.max(0, Math.min(dragging.origX + dx, tLen - tir.placed[dragging.palletIndex].dw));
       const newY = Math.max(0, Math.min(dragging.origY + dy, tWid - tir.placed[dragging.palletIndex].dh));
       
-      // Geçici olarak paleti yeni konumda göstermek için state güncellemesi yapılabilir
-      // Ancak şu an sadece görsel geri bildirim veriyoruz
+      // Sürükleme sırasında geçici pozisyon güncellemesi
+      setTirs((prevTirs) => {
+        const newTirs = [...prevTirs];
+        const tir = newTirs[tirIndex];
+        if (!tir) return prevTirs;
+
+        const newPlaced = [...tir.placed];
+        const pallet = newPlaced[dragging.palletIndex];
+        if (!pallet) return prevTirs;
+
+        newPlaced[dragging.palletIndex] = { ...pallet, x: newX, y: newY };
+        newTirs[tirIndex] = { ...tir, placed: newPlaced };
+
+        return newTirs;
+      });
     }
-  }, [dragging, findPalletAtPoint, getScale, tLen, tWid, tir.placed]);
+  }, [dragging, findPalletAtPoint, getScale, tLen, tWid, tir.placed, tirIndex]);
 
   const handleMouseUp = useCallback((e: React.MouseEvent<HTMLCanvasElement>) => {
     if (dragging && onPalletMove) {
@@ -210,6 +226,11 @@ export function TrailerCanvas({ tir, tirIndex, tirTotal, tLen, tWid, onPalletMov
         <div className="absolute top-2 right-2 bg-white/90 backdrop-blur-sm px-2 py-1 rounded text-[10px] font-semibold text-stone-500 border border-stone-200">
           Dorsé {tirIndex + 1}/{tirTotal} · {tir.placed.length} palet · %{tir.util} doluluk
         </div>
+        {dragging && (
+          <div className="absolute top-2 left-2 bg-blue-600 text-white px-3 py-1.5 rounded-md text-xs font-medium shadow-lg">
+            📦 {dragging.palletName}
+          </div>
+        )}
         {dragging && (
           <div className="absolute bottom-2 left-1/2 -translate-x-1/2 bg-blue-600 text-white px-3 py-1.5 rounded-md text-xs font-medium shadow-lg">
             🖱️ Paleti sürükleyin ve bırakın
